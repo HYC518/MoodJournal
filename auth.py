@@ -61,7 +61,7 @@ class Auth:
         db = _load_db()
         user = db["users"].get(username)
         if not user or user["password"] != _hash_password(password):
-            return {"success": False, "error": "用户名或密码错误"}
+            return {"success": False, "error": "Invalid username or password"}
 
         token = secrets.token_hex(16)
         db["tokens"][token] = username
@@ -77,9 +77,9 @@ class Auth:
     def register(username: str, password: str, nickname: str = "") -> dict:
         db = _load_db()
         if username in db["users"]:
-            return {"success": False, "error": "用户名已存在"}
+            return {"success": False, "error": "Username already exists"}
         if len(username) < 2 or len(password) < 4:
-            return {"success": False, "error": "用户名至少2位，密码至少4位"}
+            return {"success": False, "error": "Username must be at least 2 characters, password at least 4"}
 
         db["users"][username] = {
             "password": _hash_password(password),
@@ -124,17 +124,17 @@ class FriendManager:
     def send_request(from_user: str, to_user: str) -> dict:
         db = _load_db()
         if to_user not in db["users"]:
-            return {"success": False, "error": "目标用户不存在"}
+            return {"success": False, "error": "User not found"}
         if from_user == to_user:
-            return {"success": False, "error": "不能添加自己为好友"}
+            return {"success": False, "error": "You cannot add yourself"}
 
         me     = db["users"][from_user]
         target = db["users"][to_user]
 
         if to_user in me["friends"]:
-            return {"success": False, "error": "你们已经是好友了"}
+            return {"success": False, "error": "Already friends"}
         if to_user in me["friend_requests_out"]:
-            return {"success": False, "error": "好友请求已发送，等待对方同意"}
+            return {"success": False, "error": "Friend request already sent"}
 
         # if target already sent me a request → auto-accept
         if from_user in target["friend_requests_out"]:
@@ -145,12 +145,12 @@ class FriendManager:
                 u for u in me["friend_requests_in"] if u != to_user
             ]
             _save_db(db)
-            return {"success": True, "message": f"已互相成为好友！"}
+            return {"success": True, "message": f"You are now friends!"}
 
         me["friend_requests_out"].append(to_user)
         target["friend_requests_in"].append(from_user)
         _save_db(db)
-        return {"success": True, "message": f"好友请求已发送给 {to_user}"}
+        return {"success": True, "message": f"Friend request sent to {to_user}"}
 
     @staticmethod
     def accept_request(username: str, from_user: str) -> dict:
@@ -159,16 +159,16 @@ class FriendManager:
         sender = db["users"].get(from_user)
 
         if not sender:
-            return {"success": False, "error": "用户不存在"}
+            return {"success": False, "error": "User not found"}
         if from_user not in me["friend_requests_in"]:
-            return {"success": False, "error": "没有来自该用户的好友请求"}
+            return {"success": False, "error": "No friend request from this user"}
 
         me["friend_requests_in"].remove(from_user)
         sender["friend_requests_out"].remove(username)
         me["friends"].append(from_user)
         sender["friends"].append(username)
         _save_db(db)
-        return {"success": True, "message": f"已添加 {from_user} 为好友"}
+        return {"success": True, "message": f"Added {from_user} as a friend"}
 
     @staticmethod
     def reject_request(username: str, from_user: str) -> dict:
@@ -177,14 +177,14 @@ class FriendManager:
         sender = db["users"].get(from_user)
 
         if not sender:
-            return {"success": False, "error": "用户不存在"}
+            return {"success": False, "error": "User not found"}
         if from_user not in me["friend_requests_in"]:
-            return {"success": False, "error": "没有来自该用户的好友请求"}
+            return {"success": False, "error": "No friend request from this user"}
 
         me["friend_requests_in"].remove(from_user)
         sender["friend_requests_out"].remove(username)
         _save_db(db)
-        return {"success": True, "message": f"已拒绝 {from_user} 的好友请求"}
+        return {"success": True, "message": f"Rejected friend request from {from_user}"}
 
     @staticmethod
     def remove_friend(username: str, friend: str) -> dict:
@@ -193,12 +193,12 @@ class FriendManager:
         them = db["users"].get(friend)
 
         if not them or friend not in me["friends"]:
-            return {"success": False, "error": "该用户不是你的好友"}
+            return {"success": False, "error": "This user is not your friend"}
 
         me["friends"].remove(friend)
         them["friends"].remove(username)
         _save_db(db)
-        return {"success": True, "message": f"已删除好友 {friend}"}
+        return {"success": True, "message": f"Removed {friend} from friends"}
 
     @staticmethod
     def get_friends(username: str) -> dict:

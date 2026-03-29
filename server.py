@@ -6,7 +6,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import json
 import threading
 import pandas as pd
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from google import genai
 
@@ -517,6 +517,45 @@ def predict_status_route():
 # RUN
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════
+# CHAT SYSTEM
+# ══════════════════════════════════════════════════════════════
+# chat_messages: { "user1_user2": [ {from, text, timestamp} ] }
+chat_messages = {}
+
+def chat_key(u1, u2):
+    return '_'.join(sorted([u1, u2]))
+
+@app.route('/api/chat/<friend>', methods=['GET'])
+@login_required
+def get_chat(friend):
+    username = request.username
+    key = chat_key(username, friend)
+    msgs = chat_messages.get(key, [])
+    # only return messages after 'since' timestamp if provided
+    since = request.args.get('since', '')
+    if since:
+        msgs = [m for m in msgs if m['timestamp'] > since]
+    return jsonify(msgs)
+
+@app.route('/api/chat/<friend>', methods=['POST'])
+@login_required
+def send_chat(friend):
+    username = request.username
+    text = request.json.get('text', '').strip()
+    if not text:
+        return jsonify({'error': 'Empty message'}), 400
+    from datetime import datetime
+    msg = {
+        'from': username,
+        'text': text,
+        'timestamp': datetime.now().isoformat()
+    }
+    key = chat_key(username, friend)
+    chat_messages.setdefault(key, []).append(msg)
+    return jsonify({'success': True, 'message': msg})
+
+
+# ══════════════════════════════════════════════════════════════
 # FRIEND ALERTS (for friend.html)
 # ══════════════════════════════════════════════════════════════
 @app.route('/api/friend-alerts', methods=['GET'])
@@ -525,7 +564,6 @@ def friend_alerts():
     username = request.username
     friends_data = FriendManager.get_friends(username)
     friends = friends_data.get('friends', [])
-
     alerts = []
     for friend in friends:
         friend_entries = user_entries.get(friend, [])
@@ -534,12 +572,10 @@ def friend_alerts():
         last_5 = friend_entries[-5:]
         low = [e for e in last_5 if e['mood_score'] <= 2]
         if len(low) == 5:
-            db = __import__('json')
-            import json
-            # get friend nickname from users.json
+            import json as _json
             try:
                 with open('users.json', 'r') as f:
-                    db = json.load(f)
+                    db = _json.load(f)
                 friend_nickname = db['users'].get(friend, {}).get('nickname', friend)
             except:
                 friend_nickname = friend
@@ -550,14 +586,30 @@ def friend_alerts():
                 'friend_avatar': '🌸',
                 'days': [{'date': e['date'], 'score': e['mood_score']} for e in last_5]
             })
-
     return jsonify(alerts)
-
 
 @app.route('/api/friend-alerts/dismiss', methods=['POST'])
 @login_required
 def dismiss_alert():
     return jsonify({'success': True})
+
+@app.route('/api/friends/mood-summary', methods=['GET'])
+@login_required  
+def mood_summary():
+    username = request.username
+    friends_data = FriendManager.get_friends(username)
+    friends = friends_data.get('friends', [])
+    summary = []
+    for friend in friends:
+        entries = user_entries.get(friend, [])
+        last = entries[-1] if entries else None
+        summary.append({
+            'username': friend,
+            'last_score': last['mood_score'] if last else None,
+            'last_date': last['date'] if last else None,
+            'total_entries': len(entries)
+        })
+    return jsonify(summary)
 
 
 # ══════════════════════════════════════════════════════════════
